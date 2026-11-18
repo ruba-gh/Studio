@@ -32,6 +32,8 @@ a { color: var(--accent-dark); }
 .primary:hover:not(:disabled) { background: var(--accent-dark); }
 .secondary { background: #fff; color: var(--accent-dark); border-color: #ded2f2; }
 .subtle { background: transparent; color: var(--muted); }
+.danger { background: #fff0f1; border-color: #f6cfd5; color: #962b3e; }
+.danger:hover:not(:disabled) { background: #ffe0e4; }
 .secondary:hover:not(:disabled), .subtle:hover:not(:disabled) { background: var(--tint); color: var(--accent-dark); }
 form { display: grid; gap: 15px; max-width: 520px; }
 label { display: grid; gap: 5px; font-weight: 650; }

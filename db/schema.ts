@@ -13,6 +13,7 @@ export const marketers = sqliteTable("marketers", {
   code: text("code").notNull().unique(),
   password: text("password").notNull(),
   active: integer("active").notNull().default(1),
+  archivedAt: text("archived_at"),
   rate: integer("rate").notNull(),
   method: text("method"),
   beneficiary: text("beneficiary"),

@@ -6,7 +6,7 @@ export async function GET(_request: Request, context: { params: Promise<{ code: 
   const { code } = await context.params;
   const db = env.DB;
   const row = db && await db.prepare(
-    "SELECT s.whatsapp, m.code FROM marketers m CROSS JOIN settings s WHERE m.code = ? AND m.active = 1",
+    "SELECT s.whatsapp, m.code FROM marketers m CROSS JOIN settings s WHERE m.code = ? AND m.active = 1 AND m.archived_at IS NULL",
   ).bind(code.normalize("NFKC").toUpperCase()).first<{whatsapp: string; code: string}>();
   const headers = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" };
   if (!row?.whatsapp) {

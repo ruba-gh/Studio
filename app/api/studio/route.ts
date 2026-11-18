@@ -4,7 +4,7 @@ import { fortnight, methods, minimum, riyadhDate, schedule } from "../../../lib/
 
 export const dynamic = "force-dynamic";
 type Settings = { admin: string; whatsapp: string; anchor: string };
-type Member = { id: string; name: string; code: string; rate: number; active: number; method: string | null; beneficiary: string | null; account: string | null };
+type Member = { id: string; name: string; code: string; rate: number; active: number; archived_at: string | null; method: string | null; beneficiary: string | null; account: string | null };
 
 function reply(value: object, status = 200, cookie?: string) {
   const headers = new Headers({ "Cache-Control": "private, no-store" });
@@ -56,14 +56,14 @@ function passwordInput(value: unknown) {
   validate(typeof value === "string" && value.length >= 10 && value.length <= 128, "كلمة المرور تحتاج من ١٠ إلى ١٢٨ حرفًا");
   return value;
 }
-const memberFields = "id,name,code,rate,active,method,beneficiary,account";
+const memberFields = "id,name,code,rate,active,archived_at,method,beneficiary,account";
 async function access(request: Request) {
   const db = env.DB!;
   const principal = await principalFor(request);
   const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").first<Settings>();
   const admin = principal === "admin" && !!settings;
   const member = principal && !admin
-    ? await db.prepare(`SELECT ${memberFields} FROM marketers WHERE id=? AND active=1`).bind(principal).first<Member>()
+    ? await db.prepare(`SELECT ${memberFields} FROM marketers WHERE id=? AND active=1 AND archived_at IS NULL`).bind(principal).first<Member>()
     : null;
   return { db, settings, admin, member };
 }
@@ -117,7 +117,7 @@ async function updateDashboard(request: Request) {
       const username = required(data.username, "اسم الدخول", 40).normalize("NFKC").toUpperCase();
       const password = required(data.password, "كلمة المرور", 128);
       const isAdmin = username === "ADMIN";
-      const account = isAdmin ? null : await db.prepare("SELECT id,password FROM marketers WHERE code=? AND active=1").bind(username).first<{id: string; password: string}>();
+      const account = isAdmin ? null : await db.prepare("SELECT id,password FROM marketers WHERE code=? AND active=1 AND archived_at IS NULL").bind(username).first<{id: string; password: string}>();
       if (!await checkPassword(typeof data.password === "string" ? data.password : password, isAdmin ? settings?.admin : account?.password)) {
         return reply({ error: "اسم الدخول أو كلمة المرور غير صحيحة" }, 401);
       }
@@ -140,7 +140,7 @@ async function updateDashboard(request: Request) {
       const name = required(data.beneficiary, "اسم المستفيد");
       const account = required(data.account, "بيانات التحويل").replace(/\s/g, "").toUpperCase();
       validate(method === "bank" ? /^SA\d{22}$/.test(account) : /^(?:05\d{8}|(?:\+?966)5\d{8})$/.test(account), method === "bank" ? "اكتبي الآيبان السعودي كاملًا" : "اكتبي رقم الجوال السعودي المرتبط بالمحفظة");
-      await db.prepare("UPDATE marketers SET method=?, beneficiary=?, account=? WHERE id=?").bind(method, name, account, member.id).run();
+      await db.prepare("UPDATE marketers SET method=?, beneficiary=?, account=? WHERE id=? AND archived_at IS NULL").bind(method, name, account, member.id).run();
       return reply({ success: true });
     }
     if (!admin || !settings) return reply({ error: "هذه العملية للإدارة فقط" }, 403);
@@ -163,20 +163,31 @@ async function updateDashboard(request: Request) {
         const active = data.active ? 1 : 0;
         const hash = data.password ? await passwordHash(passwordInput(data.password)) : null;
         const results = await db.batch([
-          db.prepare("UPDATE marketers SET name=?, code=?, rate=?, active=?, password=COALESCE(?,password) WHERE id=?").bind(name,code,rate,active,hash,marketer),
+          db.prepare("UPDATE marketers SET name=?, code=?, rate=?, active=?, password=COALESCE(?,password) WHERE id=? AND archived_at IS NULL").bind(name,code,rate,active,hash,marketer),
           db.prepare("DELETE FROM sessions WHERE principal=? AND (? IS NOT NULL OR ?=0)").bind(marketer,hash,active),
         ]);
         validate(results[0].meta.changes === 1, "حساب المسوّق غير موجود");
       } else {
         await db.prepare("INSERT INTO marketers (id,name,code,rate,password) VALUES (?,?,?,?,?)").bind(id,name,code,rate,await passwordHash(passwordInput(data.password))).run();
       }
+    } else if (data.action === "archive-marketer") {
+      const marketer = required(data.id, "المسوّق");
+      const [change] = await db.batch([
+        db.prepare("UPDATE marketers SET archived_at=COALESCE(archived_at,?) WHERE id=?").bind(stamp,marketer),
+        db.prepare("DELETE FROM sessions WHERE principal=?").bind(marketer),
+      ]);
+      validate(change.meta.changes === 1, "حساب المسوّق غير موجود");
+    } else if (data.action === "restore-marketer") {
+      const marketer = required(data.id, "المسوّق");
+      const change = await db.prepare("UPDATE marketers SET archived_at=NULL WHERE id=?").bind(marketer).run();
+      validate(change.meta.changes === 1, "حساب المسوّق غير موجود");
     } else if (data.action === "referral") {
       const code = required(data.code, "كود المسوّق").normalize("NFKC").toUpperCase();
       const raw = required(data.customer, "رقم العميل").replace(/[\s()+-]/g, "");
       const customer = /^05\d{8}$/.test(raw) ? "966" + raw.slice(1) : raw;
       const project = required(data.project, "نوع الخدمة أو مرجع المشروع", 150);
       validate(/^\d{8,15}$/.test(customer), "اكتبي رقم العميل بصيغة صحيحة");
-      const result = await db.prepare("INSERT INTO referrals (id,marketer,customer,project,rate,date) SELECT ?,id,?,?,rate,? FROM marketers WHERE code=?").bind(id,customer,project,today,code).run();
+      const result = await db.prepare("INSERT INTO referrals (id,marketer,customer,project,rate,date) SELECT ?,id,?,?,rate,? FROM marketers WHERE code=? AND archived_at IS NULL").bind(id,customer,project,today,code).run();
       validate(result.meta.changes === 1, "كود المسوّق غير موجود");
     } else if (data.action === "review") {
       const referral = required(data.id, "رقم الإحالة");

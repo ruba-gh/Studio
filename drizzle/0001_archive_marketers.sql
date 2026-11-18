@@ -1,0 +1,1 @@
+ALTER TABLE `marketers` ADD `archived_at` text;

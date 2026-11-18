@@ -96,12 +96,20 @@ function overview() {
 }
 
 function marketerPage() {
-  return panel("حسابات المسوّقين", table(["الاسم", "الكود", "العمولة", "الإحالات", "الحالة", "الإجراءات"], marketers().map((row) => [
+  const current = marketers().filter((row) => !row.archived_at);
+  const archived = marketers().filter((row) => row.archived_at);
+  const main = table(["الاسم", "الكود", "العمولة", "الإحالات", "الحالة", "الإجراءات"], current.map((row) => [
     safe(row.name), markup(row.code), currency.format(row.rate / 100) + "٪",
     currency.format(data.referrals.filter((referral) => referral.marketer === row.id).length),
     row.active ? "نشط" : "موقوف",
-    `<div class="cell-actions">${action("تعديل", "edit-marketer", { id: row.id })}${action("نسخ الرابط", "copy", { id: row.id, disabled: !data.whatsapp || !row.active })}</div>`,
-  ]), empty("ما فيه مسوّقون حتى الآن", "أضيفي اسم المسوّق وكوده ونسبة العمولة.")));
+    `<div class="cell-actions">${action("تعديل", "edit-marketer", { id: row.id })}${action("نسخ الرابط", "copy", { id: row.id, disabled: !data.whatsapp || !row.active })}${action("حذف", "archive-marketer", { id: row.id, variant: "danger" })}</div>`,
+  ]), empty("ما فيه حسابات في القائمة", "أضيفي مسوّقة جديدة أو استرجعي حسابًا من الأرشيف."));
+  if (!archived.length) return panel("حسابات المسوّقين", main);
+  const archive = table(["الاسم", "الكود", "تاريخ الحذف", "الإجراء"], archived.map((row) => [
+    safe(row.name), markup(row.code), date(row.archived_at),
+    action("استرجاع", "restore-marketer", { id: row.id }),
+  ]));
+  return panel("حسابات المسوّقين", main) + panel("الأرشيف", archive);
 }
 
 function referralsPage() {
@@ -148,8 +156,8 @@ function password(label, name = "password", fresh = false, required = true) {
 function choose(label, name, options, current = "", required = true) {
   return `<label>${label}<select name="${name}" ${required ? "required" : ""}>${Object.entries(options).sort(([left], [right]) => Number(Boolean(left)) - Number(Boolean(right))).map(([key, value]) => `<option value="${safe(key)}" ${key === current ? "selected" : ""}>${safe(value)}</option>`).join("")}</select></label>`;
 }
-function form(command, fields, label = "حفظ") {
-  return `<form data-submit="${command}">${fields}<div><button class="button primary" type="submit">${label}</button></div></form>`;
+function form(command, fields, label = "حفظ", variant = "primary") {
+  return `<form data-submit="${command}">${fields}<div><button class="button ${variant}" type="submit">${label}</button></div></form>`;
 }
 function settingsPage() {
   const member = data.member;
@@ -226,7 +234,15 @@ function openModal(command, id, trigger) {
   const referral = data.referrals.find((row) => row.id === id);
   const available = eligible(id);
   let title, fields;
-  if (command === "edit-marketer") {
+  if (command === "archive-marketer" && member && !member.archived_at) {
+    title = "حذف المسوّقة";
+    fields = `<p>بينتقل حساب <strong>${safe(member.name)}</strong> للأرشيف ويتوقف تسجيل الدخول ورابط الإحالة. سجل الإحالات والعمولات يبقى محفوظ.</p>
+      <input type="hidden" name="id" value="${safe(member.id)}">`;
+  } else if (command === "restore-marketer" && member?.archived_at) {
+    title = "استرجاع المسوّقة";
+    fields = `<p>بيرجع حساب <strong>${safe(member.name)}</strong> للقائمة بحالته السابقة.</p>
+      <input type="hidden" name="id" value="${safe(member.id)}">`;
+  } else if (command === "edit-marketer" && !member?.archived_at) {
     title = member ? "تعديل المسوّق" : "إضافة مسوّق";
     fields = input("الاسم", "name", member?.name, { attrs: 'maxlength="100"' })
       + input("الكود واسم الدخول", "code", member?.code, { attrs: 'maxlength="40"' })
@@ -234,7 +250,7 @@ function openModal(command, id, trigger) {
       + input("نسبة العمولة ٪", "rate", member ? member.rate / 100 : "", { type: "number", attrs: 'min=".01" max="100" step=".01"' })
       + (member ? `<input type="hidden" name="id" value="${safe(member.id)}"><label class="checkbox"><input type="checkbox" name="active" ${member.active ? "checked" : ""}>الحساب والرابط نشطان</label>` : "");
   } else if (command === "referral") {
-    const active = marketers();
+    const active = marketers().filter((row) => !row.archived_at);
     if (!active.length) {
       go("marketers");
       feedback("#dashboard-feedback", "أضيفي مسوّق قبل تسجيل إحالة.", true);
@@ -256,7 +272,9 @@ function openModal(command, id, trigger) {
       + input("مرجع الحوالة المنفذة", "reference");
   } else return;
   select("#modal-title").textContent = title;
-  select("#modal-content").innerHTML = form(command === "edit-marketer" ? "marketer" : command, fields, command === "payout" ? "توثيق الحوالة" : "حفظ");
+  const submitLabels = { payout: "توثيق الحوالة", "archive-marketer": "تأكيد الحذف", "restore-marketer": "استرجاع" };
+  const kind = command === "archive-marketer" ? "danger" : "primary";
+  select("#modal-content").innerHTML = form(command === "edit-marketer" ? "marketer" : command, fields, submitLabels[command] || "حفظ", kind);
   feedback("#modal-error", "");
   lastModalTrigger = trigger;
   modal.showModal();
@@ -301,7 +319,7 @@ document.addEventListener("click", (event) => {
   const command = item.dataset.action;
   if (["settings", "referrals"].includes(command)) go(command);
   if (command === "copy") void copyLink(item.dataset.id);
-  if (["edit-marketer", "referral", "review", "payout"].includes(command)) openModal(command, item.dataset.id, item);
+  if (["edit-marketer", "archive-marketer", "restore-marketer", "referral", "review", "payout"].includes(command)) openModal(command, item.dataset.id, item);
 });
 modal.addEventListener("close", () => {
   select("#modal-content").replaceChildren();
