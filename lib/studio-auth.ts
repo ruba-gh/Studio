@@ -87,8 +87,9 @@ export async function canAttempt(request: Request, action: string) {
   const bucket = await digest(address + ":" + action + ":" + boundary);
   const results = await db.batch([
     db.prepare("DELETE FROM login_attempts WHERE expires<=?").bind(now),
-    db.prepare("INSERT INTO login_attempts (bucket, attempts, expires) VALUES (?,1,?) ON CONFLICT(bucket) DO UPDATE SET attempts=attempts+1 RETURNING attempts")
+    db.prepare("INSERT INTO login_attempts (bucket, attempts, expires) VALUES (?,1,?) ON CONFLICT(bucket) DO UPDATE SET attempts=attempts+1")
       .bind(bucket, boundary),
+    db.prepare("SELECT attempts FROM login_attempts WHERE bucket=?").bind(bucket),
   ]);
-  return Number((results[1].results[0] as { attempts?: number } | undefined)?.attempts) <= (action === "setup" ? 10 : 25);
+  return Number((results[2].results[0] as { attempts?: number } | undefined)?.attempts) <= (action === "setup" ? 10 : 25);
 }

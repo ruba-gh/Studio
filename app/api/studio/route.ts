@@ -199,6 +199,7 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof InputError) return reply({ error: error.message }, 400);
     if (String(error).includes("UNIQUE constraint failed")) return reply({ error: "الكود أو مرجع الحوالة مستخدم مسبقًا" }, 409);
+    console.error("Studio operation failed", error instanceof Error ? error.message : "unexpected error");
     return reply({ error: "تعذر حفظ البيانات. حاولي مرة أخرى" }, 500);
   }
 }

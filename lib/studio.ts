@@ -4,7 +4,10 @@ export const methods = { barq: "برق", stc: "STC", bank: "حوالة بنكي�
 export const states = { pending: "بانتظار الدفع", approved: "عمولة معتمدة", cancelled: "ملغي" };
 
 export function riyadhDate() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Riyadh" }).format(new Date());
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  return ["year", "month", "day"].map(type => parts.find(part => part.type === type)?.value).join("-");
 }
 
 export function schedule(anchor: string, today = riyadhDate()) {
