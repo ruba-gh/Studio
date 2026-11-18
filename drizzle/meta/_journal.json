@@ -15,6 +15,13 @@
       "when": 1795028485622,
       "tag": "0001_archive_marketers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795033001522,
+      "tag": "0002_whatsapp_message",
+      "breakpoints": true
     }
   ]
 }

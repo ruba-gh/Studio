@@ -15,6 +15,7 @@ const methods = { barq: "برق", stc: "STC", bank: "حوالة بنكية" };
 const currency = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 2 });
 const dates = new Intl.DateTimeFormat("ar-SA-u-ca-gregory", { dateStyle: "medium", timeZone: "Asia/Riyadh" });
 const minimum = 10000;
+const defaultWhatsAppMessage = "ارجو ارسال الكود لضمان حق المسوق ({code})";
 let data;
 let section = "overview";
 let inFlight = false;
@@ -178,10 +179,24 @@ function choose(label, name, options, current = "", required = true) {
 function form(command, fields, label = "حفظ", variant = "primary") {
   return `<form data-submit="${command}">${fields}<div><button class="button ${variant}" type="submit">${label}</button></div></form>`;
 }
+function previewWhatsAppMessage(template) {
+  const message = template.trim() || defaultWhatsAppMessage;
+  const sampleCode = "RUBA";
+  return message.includes("{code}") ? message.replaceAll("{code}", sampleCode) : message + " (" + sampleCode + ")";
+}
+
+function whatsappMessageField() {
+  const value = data.whatsappMessage ?? defaultWhatsAppMessage;
+  return `<label>نص رسالة واتساب<textarea id="whatsapp-message" name="whatsappMessage" rows="4" maxlength="500" aria-describedby="whatsapp-message-help" dir="auto" required>${safe(value)}</textarea></label>
+    <p id="whatsapp-message-help" class="muted">اكتبي <bdi><code>{code}</code></bdi> في المكان اللي تبين يظهر فيه كود المسوّق. إذا ما كتبتيه، ينضاف آخر الرسالة تلقائيًا.</p>
+    <div class="message-preview"><strong>معاينة الرسالة</strong><p id="whatsapp-preview" dir="auto">${safe(previewWhatsAppMessage(value))}</p></div>`;
+}
+
 function settingsPage() {
   const member = data.member;
   const details = isAdmin() ? form("settings",
-    input("رقم واتساب الستوديو", "whatsapp", data.whatsapp, { type: "tel", dir: "ltr" }) +
+    input("رقم واتساب الستوديو", "whatsapp", data.whatsapp, { type: "tel", dir: "ltr", required: Boolean(data.whatsapp) }) +
+    whatsappMessageField() +
     input("تاريخ أول دورة صرف", "anchor", data.anchor, { type: "date", dir: "ltr" }) + "<p class='muted'>تتكرر الدورة كل ١٤ يومًا بتوقيت الرياض.</p>"
   ) : form("details",
     choose("وسيلة التحويل", "method", methods, member.method || "barq") +
@@ -360,6 +375,9 @@ select("#sign-out").addEventListener("click", async () => {
   }
 });
 document.addEventListener("input", (event) => {
+  if (event.target.id === "whatsapp-message") {
+    select("#whatsapp-preview").textContent = previewWhatsAppMessage(event.target.value);
+  }
   if (event.target.id === "search-referrals") {
     filter.query = event.target.value;
     filterReferrals();

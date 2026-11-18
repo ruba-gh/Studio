@@ -1,9 +1,9 @@
 import { env } from "cloudflare:workers";
 import { canAttempt, checkPassword, createSession, dashboardOrigin, dashboardRequest, endSession, matches, passwordHash, principalFor } from "../../../lib/studio-auth";
-import { fortnight, methods, minimum, riyadhDate, schedule } from "../../../lib/studio";
+import { defaultWhatsAppMessage, fortnight, methods, minimum, riyadhDate, schedule } from "../../../lib/studio";
 
 export const dynamic = "force-dynamic";
-type Settings = { admin: string; whatsapp: string; anchor: string };
+type Settings = { admin: string; whatsapp: string; whatsapp_message: string | null; anchor: string };
 type Member = { id: string; name: string; code: string; rate: number; active: number; archived_at: string | null; method: string | null; beneficiary: string | null; account: string | null };
 
 function reply(value: object, status = 200, cookie?: string) {
@@ -80,7 +80,7 @@ async function readDashboard(request: Request) {
       db.prepare("SELECT * FROM payouts ORDER BY rowid DESC"),
       db.prepare("SELECT * FROM history ORDER BY rowid DESC"),
     ]);
-    return reply({ role: "admin", whatsapp: settings.whatsapp, anchor: settings.anchor, timing, marketers: marketers.results, referrals: referrals.results, payouts: payouts.results, history: history.results });
+    return reply({ role: "admin", whatsapp: settings.whatsapp, whatsappMessage: settings.whatsapp_message ?? defaultWhatsAppMessage, anchor: settings.anchor, timing, marketers: marketers.results, referrals: referrals.results, payouts: payouts.results, history: history.results });
   }
   const [referrals, payouts] = await db.batch([
     db.prepare(`SELECT r.id,r.project,r.date,r.state,r.commission,${openCommission} AS open FROM referrals r WHERE r.marketer=? ORDER BY r.rowid DESC`).bind(member!.id),
@@ -145,13 +145,14 @@ async function updateDashboard(request: Request) {
     }
     if (!admin || !settings) return reply({ error: "هذه العملية للإدارة فقط" }, 403);
     if (data.action === "settings") {
-      const raw = required(data.whatsapp, "رقم واتساب").replace(/[\s()+-]/g, "");
+      const raw = (data.whatsapp === "" && !settings.whatsapp ? "" : required(data.whatsapp, "رقم واتساب")).replace(/[\s()+-]/g, "");
       const number = /^05\d{8}$/.test(raw) ? "966" + raw.slice(1) : raw;
-      validate(/^9665\d{8}$/.test(number), "اكتبي رقم واتساب سعودي بصيغة 05 أو 966");
+      validate((number === "" && !settings.whatsapp) || /^9665\d{8}$/.test(number), "اكتبي رقم واتساب سعودي بصيغة 05 أو 966");
       const anchor = required(data.anchor, "تاريخ أول دورة");
       const anchorMs = Date.parse(anchor + "T00:00:00Z");
       validate(/^\d{4}-\d\d-\d\d$/.test(anchor) && Number.isFinite(anchorMs) && new Date(anchorMs).toISOString().slice(0, 10) === anchor, "اختاري تاريخًا صحيحًا");
-      await db.prepare("UPDATE settings SET whatsapp=?, anchor=? WHERE id=1").bind(number, anchor).run();
+      const message = data.whatsappMessage === undefined ? null : required(data.whatsappMessage, "نص رسالة واتساب", 500);
+      await db.prepare("UPDATE settings SET whatsapp=?, anchor=?, whatsapp_message=COALESCE(?,whatsapp_message) WHERE id=1").bind(number, anchor, message).run();
     } else if (data.action === "marketer") {
       const name = required(data.name, "اسم المسوّق");
       const code = required(data.code, "الكود", 40).normalize("NFKC").toUpperCase();

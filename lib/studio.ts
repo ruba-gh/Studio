@@ -3,6 +3,13 @@ export const fortnight = 14 * 86400000;
 export const methods = { barq: "برق", stc: "STC", bank: "حوالة بنكية" };
 export const states = { pending: "بانتظار الدفع", approved: "عمولة معتمدة", cancelled: "ملغي" };
 
+export const defaultWhatsAppMessage = "ارجو ارسال الكود لضمان حق المسوق ({code})";
+
+export function formatWhatsAppMessage(template: string | null | undefined, code: string) {
+  const message = template?.trim() || defaultWhatsAppMessage;
+  return message.includes("{code}") ? message.replaceAll("{code}", () => code) : message + " (" + code + ")";
+}
+
 export function riyadhDate() {
   const parts = new Intl.DateTimeFormat("en", {
     timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit",

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { ArrowUpLeft, CalendarDays, Check, ChevronLeft, CircleHelp, ClipboardList, Copy, CreditCard, Eye, EyeOff, FileText, Gauge, Link2, LockKeyhole, LogOut, Menu, Plus, Settings, Users, Wallet, X } from "lucide-react";
-import { displayDate, methods, minimum, money, states } from "../lib/studio";
+import { defaultWhatsAppMessage, displayDate, formatWhatsAppMessage, methods, minimum, money, states } from "../lib/studio";
 
 type Method = keyof typeof methods;
 type State = keyof typeof states;
@@ -11,7 +11,7 @@ type Referral = { id: string; marketer?: string; customer?: string; project: str
 type Payout = { id: string; marketer?: string; amount: number; date: string; reference: string; method: Method; beneficiary?: string; account?: string };
 type History = { id: string; referral: string; state: State; paid: number; commission: number; date: string };
 type Timing = { days: number; date: string; eligible: boolean };
-type Data = { role: "guest" | "unavailable" | "setup" } | { role: "admin"; marketers: Marketer[]; referrals: Referral[]; payouts: Payout[]; history: History[]; whatsapp: string; anchor: string; timing: Timing } | { role: "marketer"; member: Marketer; referrals: Referral[]; payouts: Payout[]; timing: Timing; total: number; linkReady: boolean };
+type Data = { role: "guest" | "unavailable" | "setup" } | { role: "admin"; marketers: Marketer[]; referrals: Referral[]; payouts: Payout[]; history: History[]; whatsapp: string; whatsappMessage?: string; anchor: string; timing: Timing } | { role: "marketer"; member: Marketer; referrals: Referral[]; payouts: Payout[]; timing: Timing; total: number; linkReady: boolean };
 type Modal = { type: "marketer"; row?: Marketer } | { type: "referral" } | { type: "review"; row: Referral } | { type: "payout"; row: Marketer; amount: number } | { type: "archive-marketer" | "restore-marketer"; row: Marketer };
 const navigation = [
   { id: "overview", text: "نظرة عامة", icon: Gauge },
@@ -59,12 +59,14 @@ export default function Studio() {
   const [expanded, setExpanded] = useState(false);
   const [marketerQuery, setMarketerQuery] = useState("");
   const [marketerStatus, setMarketerStatus] = useState("");
+  const [whatsappMessage, setWhatsAppMessage] = useState(defaultWhatsAppMessage);
   const [method, setMethod] = useState<Method>("barq");
   const refresh = useCallback(async () => {
     const response = await fetch("/api/studio", { cache: "no-store" });
     if (!response.ok) throw new Error("تعذر تحميل البيانات");
     const next = await response.json() as Data;
     setData(next);
+    if (next.role === "admin") setWhatsAppMessage(next.whatsappMessage ?? defaultWhatsAppMessage);
     if (next.role === "marketer") setMethod(next.member.method ?? "barq");
   }, []);
   useEffect(() => {
@@ -158,7 +160,11 @@ export default function Studio() {
       {isAdmin && <section className="panel"><div className="panel-head"><h2>أرصدة المسوّقين</h2></div>{!marketers.length ? <Empty title="لا توجد أرصدة" text="تظهر أرصدة المسوّقين وبيانات التحويل هنا."/> : <div className="table-wrap"><table><thead><tr><th>المسوّق</th><th>الرصيد المعتمد</th><th>المتاح للصرف</th><th>الوسيلة والمستفيد</th><th>بيانات التحويل</th><th>الإجراء</th></tr></thead><tbody>{marketers.map(row => { const eligible = due(row.id); return <tr key={row.id}><td><b>{row.name}</b></td><td>{money(unpaid.filter(ref => ref.marketer === row.id).reduce((sum, ref) => sum + ref.open, 0))}</td><td>{money(eligible >= minimum ? eligible : 0)}</td><td>{row.method ? methods[row.method] : "لم تُضف"}{row.beneficiary && <small>{row.beneficiary}</small>}</td><td><bdi>{row.account || "—"}</bdi></td><td><button className="secondary" disabled={eligible < minimum || !row.account} onClick={() => setModal({ type: "payout", row, amount: eligible })}>توثيق التحويل</button></td></tr>; })}</tbody></table></div>}</section>}
       <section className="panel"><div className="panel-head"><h2>الحوالات الموثّقة</h2></div>{data.payouts.length ? <div className="table-wrap"><table><thead><tr>{isAdmin && <th>المسوّق</th>}<th>المبلغ</th><th>التاريخ</th><th>الوسيلة</th>{isAdmin && <th>حساب المستفيد</th>}<th>مرجع الحوالة</th></tr></thead><tbody>{data.payouts.map(row => <tr key={row.id}>{isAdmin && <td>{marketerName(row.marketer)}</td>}<td><b>{money(row.amount)}</b></td><td>{displayDate(row.date)}</td><td>{methods[row.method]}</td>{isAdmin && <td>{row.beneficiary}<small><bdi>{row.account}</bdi></small></td>}<td><bdi>{row.reference}</bdi></td></tr>)}</tbody></table></div> : <Empty title="لا توجد حوالات موثّقة" text="يظهر المبلغ والتاريخ والمرجع بعد تسجيل الحوالة."/ >}</section></>}
     {tab === "settings" && <section className="panel form-panel"><h2>{isAdmin ? "إعدادات البرنامج" : "بيانات التحويل"}</h2>
-    {isAdmin ? <form onSubmit={e => save(e, { action: "settings" })}><label>واتساب ستوديو ربى<input name="whatsapp" defaultValue={data.whatsapp} placeholder="05XXXXXXXX" dir="ltr" required/></label><label>تاريخ أول دورة صرف<input name="anchor" type="date" defaultValue={data.anchor} required/></label><p className="field-note">تتكرر دورة الصرف كل ١٤ يومًا بتوقيت الرياض.</p><button className="primary" disabled={busy}>حفظ الإعدادات <Check size={17}/></button></form> :
+    {isAdmin ? <form onSubmit={e => save(e, { action: "settings" })}><label>واتساب ستوديو ربى<input name="whatsapp" defaultValue={data.whatsapp} placeholder="05XXXXXXXX" dir="ltr" required={Boolean(data.whatsapp)}/></label>
+      <label>نص رسالة واتساب<textarea name="whatsappMessage" rows={4} maxLength={500} dir="auto" aria-describedby="whatsapp-message-help" value={whatsappMessage} onChange={e => setWhatsAppMessage(e.target.value)} required/></label>
+      <p id="whatsapp-message-help" className="field-note">اكتبي <bdi><code>{"{code}"}</code></bdi> في المكان اللي تبين يظهر فيه كود المسوّق. إذا ما كتبتيه، ينضاف آخر الرسالة تلقائيًا.</p>
+      <div className="message-preview"><strong>معاينة الرسالة</strong><p dir="auto">{formatWhatsAppMessage(whatsappMessage, "RUBA")}</p></div>
+      <label>تاريخ أول دورة صرف<input name="anchor" type="date" defaultValue={data.anchor} required/></label><p className="field-note">تتكرر دورة الصرف كل ١٤ يومًا بتوقيت الرياض.</p><button className="primary" disabled={busy}>حفظ الإعدادات <Check size={17}/></button></form> :
     <form onSubmit={e => save(e, { action: "details" })}><label>وسيلة التحويل<select name="method" value={method} onChange={e => setMethod(e.target.value as Method)}>{Object.entries(methods).map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label><label>اسم المستفيد<input name="beneficiary" defaultValue={data.member.beneficiary ?? ""} required maxLength={100}/></label><label>{method === "bank" ? "الآيبان السعودي" : "رقم الجوال المرتبط بالمحفظة"}<input key={method} name="account" dir="ltr" defaultValue={data.member.method === method ? data.member.account ?? "" : ""} placeholder={method === "bank" ? "SA…" : "05XXXXXXXX"} required/></label><button className="primary" disabled={busy}>حفظ بيانات التحويل <Check size={17}/></button></form>}</section>}
     {tab === "settings" && <section className="panel form-panel"><h2>تغيير كلمة المرور</h2><form onSubmit={e => save(e, { action: "password" })}><PasswordField name="current" label="كلمة المرور الحالية"/><PasswordField label="كلمة المرور الجديدة" fresh/><button className="primary" disabled={busy}>تحديث كلمة المرور</button></form></section>}
     {tab === "policy" && <Policy/>}

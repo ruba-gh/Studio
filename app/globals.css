@@ -45,3 +45,8 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .marketer-search{display:grid;grid-template-columns:minmax(160px,350px) minmax(125px,210px);gap:12px;padding:12px 15px}
 @media(max-width:540px){.marketer-search{grid-template-columns:1fr}.stat-label{font-size:10px}}
 @media(prefers-reduced-motion:reduce){.stat-link{transition:none}}
+
+
+.form-panel textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;color:var(--ink);resize:vertical}
+.message-preview{background:var(--lilac);padding:12px;border-radius:8px;overflow-wrap:anywhere}
+.message-preview p{white-space:pre-wrap}

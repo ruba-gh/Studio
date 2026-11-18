@@ -4,6 +4,7 @@ export const settings = sqliteTable("settings", {
   id: integer("id").primaryKey(),
   admin: text("admin").notNull(),
   whatsapp: text("whatsapp").notNull().default(""),
+  whatsappMessage: text("whatsapp_message"),
   anchor: text("anchor").notNull(),
 });
 
