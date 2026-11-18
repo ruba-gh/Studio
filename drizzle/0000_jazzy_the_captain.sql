@@ -18,11 +18,17 @@ CREATE TABLE `history` (
 	FOREIGN KEY (`referral`) REFERENCES `referrals`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
+CREATE TABLE `login_attempts` (
+	`bucket` text PRIMARY KEY NOT NULL,
+	`attempts` integer NOT NULL,
+	`expires` integer NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE `marketers` (
 	`id` text PRIMARY KEY NOT NULL,
 	`name` text NOT NULL,
 	`code` text NOT NULL,
-	`email` text NOT NULL,
+	`password` text NOT NULL,
 	`active` integer DEFAULT 1 NOT NULL,
 	`rate` integer NOT NULL,
 	`method` text,
@@ -31,7 +37,6 @@ CREATE TABLE `marketers` (
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `marketers_code_unique` ON `marketers` (`code`);--> statement-breakpoint
-CREATE UNIQUE INDEX `marketers_email_unique` ON `marketers` (`email`);--> statement-breakpoint
 CREATE TABLE `payouts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`marketer` text NOT NULL,
@@ -56,6 +61,12 @@ CREATE TABLE `referrals` (
 	`paid` integer DEFAULT 0 NOT NULL,
 	`commission` integer DEFAULT 0 NOT NULL,
 	FOREIGN KEY (`marketer`) REFERENCES `marketers`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE TABLE `sessions` (
+	`token` text PRIMARY KEY NOT NULL,
+	`principal` text NOT NULL,
+	`expires` integer NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `settings` (

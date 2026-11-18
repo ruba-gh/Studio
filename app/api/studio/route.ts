@@ -1,13 +1,15 @@
 import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "../../chatgpt-auth";
+import { canAttempt, checkPassword, createSession, endSession, matches, passwordHash, principalFor } from "../../../lib/studio-auth";
 import { fortnight, methods, minimum, riyadhDate, schedule } from "../../../lib/studio";
 
 export const dynamic = "force-dynamic";
 type Settings = { admin: string; whatsapp: string; anchor: string };
-type Member = { id: string; name: string; code: string; email: string; rate: number; active: number; method: string | null; beneficiary: string | null; account: string | null };
+type Member = { id: string; name: string; code: string; rate: number; active: number; method: string | null; beneficiary: string | null; account: string | null };
 
-function reply(value: object, status = 200) {
-  return Response.json(value, { status, headers: { "Cache-Control": "private, no-store" } });
+function reply(value: object, status = 200, cookie?: string) {
+  const headers = new Headers({ "Cache-Control": "private, no-store" });
+  if (cookie) headers.set("Set-Cookie", cookie);
+  return Response.json(value, { status, headers });
 }
 class InputError extends Error {}
 function validate(ok: unknown, message: string): asserts ok {
@@ -22,33 +24,30 @@ function cycleCutoff(timing: ReturnType<typeof schedule>) {
 }
 const openCommission = "COALESCE((SELECT SUM(e.amount) FROM earnings e WHERE e.referral=r.id AND e.payout IS NULL),0)";
 const dueCommission = "COALESCE((SELECT SUM(e.amount) FROM earnings e WHERE e.referral=r.id AND e.payout IS NULL AND e.date<=?),0)";
-function keyMatch(a: string, b: string) {
-  const one = new TextEncoder().encode(a);
-  const two = new TextEncoder().encode(b);
-  let difference = one.length ^ two.length;
-  for (let i = 0; i < two.length; i++) difference |= (one[i] ?? 0) ^ two[i];
-  return difference === 0;
+function passwordInput(value: unknown) {
+  validate(typeof value === "string" && value.length >= 10 && value.length <= 128, "كلمة المرور تحتاج من ١٠ إلى ١٢٨ حرفًا");
+  return value;
 }
-async function access() {
+const memberFields = "id,name,code,rate,active,method,beneficiary,account";
+async function access(request: Request) {
   const db = env.DB!;
-  const user = await getChatGPTUser();
+  const principal = await principalFor(request);
   const settings = await db.prepare("SELECT * FROM settings WHERE id = 1").first<Settings>();
-  const admin = !!user && settings?.admin === user.userId;
-  const member = user && !admin
-    ? await db.prepare("SELECT * FROM marketers WHERE email = ?").bind(user.email.toLowerCase()).first<Member>()
+  const admin = principal === "admin" && !!settings;
+  const member = principal && !admin
+    ? await db.prepare(`SELECT ${memberFields} FROM marketers WHERE id=? AND active=1`).bind(principal).first<Member>()
     : null;
-  return { db, user, settings, admin, member };
+  return { db, settings, admin, member };
 }
-export async function GET() {
-  const { db, user, settings, admin, member } = await access();
-  if (!user) return reply({ role: "guest" });
-  if (!settings) return reply({ role: "setup" });
-  if (!admin && !member) return reply({ role: "waiting" });
+export async function GET(request: Request) {
+  const { db, settings, admin, member } = await access(request);
+  if (!settings) return reply({ role: env.STUDIO_SETUP_KEY ? "setup" : "unavailable" });
+  if (!admin && !member) return reply({ role: "guest" });
   const timing = schedule(settings.anchor);
   const cutoff = cycleCutoff(timing);
   if (admin) {
     const [marketers, referrals, payouts, history] = await db.batch([
-      db.prepare("SELECT * FROM marketers ORDER BY name"),
+      db.prepare(`SELECT ${memberFields} FROM marketers ORDER BY name`),
       db.prepare(`SELECT r.*, ${openCommission} AS open, ${dueCommission} AS due FROM referrals r ORDER BY rowid DESC`).bind(cutoff),
       db.prepare("SELECT * FROM payouts ORDER BY rowid DESC"),
       db.prepare("SELECT * FROM history ORDER BY rowid DESC"),
@@ -67,20 +66,44 @@ export async function POST(request: Request) {
   if (request.headers.get("Sec-Fetch-Site") === "cross-site" || !request.headers.get("Content-Type")?.startsWith("application/json")) {
     return reply({ error: "طلب غير صالح" }, 403);
   }
-  const { db, user, settings, admin, member } = await access();
-  if (!user) return reply({ error: "سجلي الدخول أولًا" }, 401);
+  const { db, settings, admin, member } = await access(request);
   try {
     const data = await request.json() as Record<string, unknown>;
+    validate(data && typeof data === "object", "طلب غير صالح");
     const today = riyadhDate();
     const stamp = new Date().toISOString();
     const id = crypto.randomUUID();
-    if (data.action === "setup" && !settings) {
-      const secret = env.STUDIO_SETUP_KEY;
-      validate(secret && typeof data.key === "string" && keyMatch(data.key, secret), "رمز التهيئة غير صحيح");
-      const firstDate = new Date(Date.parse(today + "T00:00:00Z") + fortnight).toISOString().slice(0, 10);
-      const result = await db.prepare("INSERT OR IGNORE INTO settings (id, admin, anchor) VALUES (1, ?, ?)").bind(user.userId, firstDate).run();
-      validate(result.meta.changes === 1, "تمت تهيئة الإدارة مسبقًا");
-      return reply({ success: true });
+    if (data.action === "logout") return reply({ success: true }, 200, await endSession(request));
+    if (data.action === "login" || data.action === "setup") {
+      if (!await canAttempt(request, data.action)) return reply({ error: "وصلت للحد الأقصى للمحاولات. جرّب بعد قليل." }, 429);
+      if (data.action === "setup") {
+        const secret = env.STUDIO_SETUP_KEY;
+        validate(!settings && secret && typeof data.key === "string" && matches(data.key, secret), "رمز التهيئة غير صحيح أو تم تفعيل الحساب مسبقًا");
+        const password = passwordInput(data.password);
+        const firstDate = new Date(Date.parse(today + "T00:00:00Z") + fortnight).toISOString().slice(0, 10);
+        const result = await db.prepare("INSERT OR IGNORE INTO settings (id,admin,anchor) VALUES (1,?,?)").bind(await passwordHash(password), firstDate).run();
+        validate(result.meta.changes === 1, "تم تفعيل حساب الإدارة مسبقًا. سجّلي الدخول.");
+        return reply({ success: true }, 200, await createSession("admin"));
+      }
+      const username = required(data.username, "اسم الدخول", 40).normalize("NFKC").toUpperCase();
+      const password = required(data.password, "كلمة المرور", 128);
+      const isAdmin = username === "ADMIN";
+      const account = isAdmin ? null : await db.prepare("SELECT id,password FROM marketers WHERE code=? AND active=1").bind(username).first<{id: string; password: string}>();
+      if (!await checkPassword(typeof data.password === "string" ? data.password : password, isAdmin ? settings?.admin : account?.password)) {
+        return reply({ error: "اسم الدخول أو كلمة المرور غير صحيحة" }, 401);
+      }
+      return reply({ success: true }, 200, await createSession(isAdmin ? "admin" : account!.id));
+    }
+    if (data.action === "password" && (admin || member)) {
+      const hash = admin ? settings?.admin : await db.prepare("SELECT password FROM marketers WHERE id=?").bind(member!.id).first<string>("password");
+      validate(typeof data.current === "string" && data.current.length <= 128 && await checkPassword(data.current, hash), "كلمة المرور الحالية غير صحيحة");
+      const next = await passwordHash(passwordInput(data.password));
+      const principal = admin ? "admin" : member!.id;
+      await db.batch([
+        admin ? db.prepare("UPDATE settings SET admin=? WHERE id=1").bind(next) : db.prepare("UPDATE marketers SET password=? WHERE id=?").bind(next, principal),
+        db.prepare("DELETE FROM sessions WHERE principal=?").bind(principal),
+      ]);
+      return reply({ success: true }, 200, await createSession(principal));
     }
     if (data.action === "details" && member) {
       const method = required(data.method, "وسيلة التحويل");
@@ -102,17 +125,21 @@ export async function POST(request: Request) {
       await db.prepare("UPDATE settings SET whatsapp=?, anchor=? WHERE id=1").bind(number, anchor).run();
     } else if (data.action === "marketer") {
       const name = required(data.name, "اسم المسوّق");
-      const email = required(data.email, "البريد الإلكتروني", 200).toLowerCase();
       const code = required(data.code, "الكود", 40).normalize("NFKC").toUpperCase();
       const rate = Math.round(Number(data.rate) * 100);
-      validate(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email), "البريد الإلكتروني غير صالح");
-      validate(/^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u.test(code), "الكود يقبل حروفًا وأرقامًا وشرطات بين الكلمات");
+      validate(code !== "ADMIN" && /^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u.test(code), "اختاري كودًا غير ADMIN من حروف أو أرقام");
       validate(Number.isInteger(rate) && rate > 0 && rate <= 10000, "أدخلي نسبة عمولة أكبر من صفر وحتى ١٠٠٪");
       if (data.id) {
-        const result = await db.prepare("UPDATE marketers SET name=?, code=?, email=?, rate=?, active=? WHERE id=?").bind(name, code, email, rate, data.active ? 1 : 0, data.id).run();
-        validate(result.meta.changes === 1, "حساب المسوّق غير موجود");
+        const marketer = required(data.id, "المسوّق");
+        const active = data.active ? 1 : 0;
+        const hash = data.password ? await passwordHash(passwordInput(data.password)) : null;
+        const results = await db.batch([
+          db.prepare("UPDATE marketers SET name=?, code=?, rate=?, active=?, password=COALESCE(?,password) WHERE id=?").bind(name,code,rate,active,hash,marketer),
+          db.prepare("DELETE FROM sessions WHERE principal=? AND (? IS NOT NULL OR ?=0)").bind(marketer,hash,active),
+        ]);
+        validate(results[0].meta.changes === 1, "حساب المسوّق غير موجود");
       } else {
-        await db.prepare("INSERT INTO marketers (id,name,code,email,rate) VALUES (?,?,?,?,?)").bind(id,name,code,email,rate).run();
+        await db.prepare("INSERT INTO marketers (id,name,code,rate,password) VALUES (?,?,?,?,?)").bind(id,name,code,rate,await passwordHash(passwordInput(data.password))).run();
       }
     } else if (data.action === "referral") {
       const code = required(data.code, "كود المسوّق").normalize("NFKC").toUpperCase();
@@ -171,7 +198,7 @@ export async function POST(request: Request) {
     return reply({ success: true });
   } catch (error) {
     if (error instanceof InputError) return reply({ error: error.message }, 400);
-    if (String(error).includes("UNIQUE constraint failed")) return reply({ error: "البريد أو الكود أو مرجع الحوالة مستخدم مسبقًا" }, 409);
+    if (String(error).includes("UNIQUE constraint failed")) return reply({ error: "الكود أو مرجع الحوالة مستخدم مسبقًا" }, 409);
     return reply({ error: "تعذر حفظ البيانات. حاولي مرة أخرى" }, 500);
   }
 }

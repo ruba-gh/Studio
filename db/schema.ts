@@ -11,7 +11,7 @@ export const marketers = sqliteTable("marketers", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   code: text("code").notNull().unique(),
-  email: text("email").notNull().unique(),
+  password: text("password").notNull(),
   active: integer("active").notNull().default(1),
   rate: integer("rate").notNull(),
   method: text("method"),
@@ -58,4 +58,17 @@ export const earnings = sqliteTable("earnings", {
   amount: integer("amount").notNull(),
   date: text("date").notNull(),
   payout: text("payout").references(() => payouts.id),
+});
+
+
+export const sessions = sqliteTable("sessions", {
+  token: text("token").primaryKey(),
+  principal: text("principal").notNull(),
+  expires: integer("expires").notNull(),
+});
+
+export const loginAttempts = sqliteTable("login_attempts", {
+  bucket: text("bucket").primaryKey(),
+  attempts: integer("attempts").notNull(),
+  expires: integer("expires").notNull(),
 });
