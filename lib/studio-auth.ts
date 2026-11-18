@@ -1,10 +1,10 @@
 import { env } from "cloudflare:workers";
-import { pbkdf2 } from "node:crypto";
+import { scrypt } from "node:crypto";
 
 const encoder = new TextEncoder();
 const cookieName = "__Host-studio_session";
 const lifetime = 7 * 24 * 60 * 60;
-const iterations = 600000;
+const scryptCost = { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 };
 
 function hex(bytes: Uint8Array) {
   return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
@@ -28,7 +28,7 @@ async function digest(value: string) {
 
 function derive(password: string, salt: string) {
   return new Promise<string>((resolve, reject) => {
-    pbkdf2(password, salt, iterations, 32, "sha256", (error, result) => {
+    scrypt(password, salt, 32, scryptCost, (error, result) => {
       if (error) reject(error);
       else resolve(result.toString("hex"));
     });
