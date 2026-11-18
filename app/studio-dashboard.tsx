@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ArrowDownLeft, ArrowUpLeft, CalendarDays, Check, ChevronLeft, CircleHelp, ClipboardList, Copy, CreditCard, Eye, EyeOff, FileText, Gauge, Link2, LockKeyhole, LogOut, Menu, Plus, Settings, Users, Wallet, X } from "lucide-react";
+import { ArrowUpLeft, CalendarDays, Check, ChevronLeft, CircleHelp, ClipboardList, Copy, CreditCard, Eye, EyeOff, FileText, Gauge, Link2, LockKeyhole, LogOut, Menu, Plus, Settings, Users, Wallet, X } from "lucide-react";
 import { displayDate, methods, minimum, money, states } from "../lib/studio";
 
 type Method = keyof typeof methods;
@@ -24,10 +24,10 @@ const navigation = [
 type Tab = typeof navigation[number]["id"];
 
 function Brand() {
-  return <div className="brand"><div className="mark" aria-hidden="true">ر<span>.</span></div><div><b>ستوديو ربى</b><small>برنامج الشركاء</small></div></div>;
+  return <div className="brand"><div className="mark" aria-hidden="true"><img className="brand-logo" src="/ruba-logo.png" alt=""/></div><div><b>ستوديو ربى</b><small>برنامج الشركاء</small></div></div>;
 }
-function Card({ label, value, note, icon: Icon }: { label: string; value: ReactNode; note?: string; icon: typeof Gauge }) {
-  return <article className="stat"><div className="stat-icon"><Icon size={20}/></div><p>{label}</p><strong>{value}</strong>{note && <small>{note}</small>}</article>;
+function Card({ label, value, note, icon: Icon, onClick }: { label: string; value: ReactNode; note?: string; icon: typeof Gauge; onClick: () => void }) {
+  return <button className="stat stat-link" type="button" onClick={onClick}><span className="stat-icon"><Icon size={20}/></span><span className="stat-label">{label}</span><strong>{value}</strong>{note && <small>{note}</small>}</button>;
 }
 function Empty({ title, text }: { title: string; text: string }) {
   return <div className="empty"><div className="empty-icon"><ClipboardList size={24}/></div><b>{title}</b><p>{text}</p></div>;
@@ -57,6 +57,8 @@ export default function Studio() {
   const [notice, setNotice] = useState<{ message: string; bad?: boolean }>();
   const [busy, setBusy] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [marketerQuery, setMarketerQuery] = useState("");
+  const [marketerStatus, setMarketerStatus] = useState("");
   const [method, setMethod] = useState<Method>("barq");
   const refresh = useCallback(async () => {
     const response = await fetch("/api/studio", { cache: "no-store" });
@@ -107,13 +109,19 @@ export default function Studio() {
       {data?.role === "setup" && <form className="login-form" onSubmit={e => save(e, { action: "setup" })}><label>رمز التهيئة<input name="key" type="password" autoComplete="off" dir="ltr" required/></label><PasswordField label="اختاري كلمة مرور الإدارة" fresh/><p className="field-note">اسم دخول الإدارة <bdi>admin</bdi></p><button className="primary" disabled={busy}>{busy ? "جارٍ التفعيل…" : "تفعيل الحساب"} <ArrowUpLeft size={17}/></button></form>}
       {data?.role === "unavailable" && <p role="status">حساب الإدارة بانتظار التهيئة.</p>}
       {!data && !notice && <p role="status">جارٍ التحميل…</p>}
-      </div><div className="welcome-art" aria-hidden="true"><div className="art-orbit a"/><div className="art-orbit b"/><div className="art-orbit c"/><span className="art-star">✳</span><div className="art-card link-card"><Link2 size={27}/></div><div className="art-card wallet-card"><Wallet size={37}/></div><div className="art-card arrow-card"><ArrowDownLeft size={25}/></div></div>
+      </div><div className="welcome-art" aria-hidden="true"><div className="art-orbit a"/><div className="art-orbit b"/><div className="art-orbit c"/><img className="hero-logo" src="/ruba-logo.png" alt=""/></div>
     </main></div>;
   }
   if (!("timing" in data)) return null;
 
   const isAdmin = data.role === "admin";
   const marketers = isAdmin ? data.marketers : [data.member];
+  const query = marketerQuery.trim().toLocaleLowerCase("ar");
+  const visibleMarketers = marketers.filter(row => {
+    const state = row.archived_at ? "archived" : row.active ? "active" : "paused";
+    return (!marketerStatus || state === marketerStatus)
+      && (!query || [row.name, row.code].some(value => value.toLocaleLowerCase("ar").includes(query)));
+  });
   const unpaid = data.referrals.filter(row => row.open > 0);
   const balance = unpaid.reduce((sum, row) => sum + row.open, 0);
   const settled = data.payouts.reduce((sum, row) => sum + row.amount, 0);
@@ -130,18 +138,21 @@ export default function Studio() {
 
   return <div className="app-shell">
     <aside className={expanded ? "sidebar expanded" : "sidebar"}><Brand/><div className="nav-heading">لوحة {isAdmin ? "الإدارة" : "المسوّق"}</div><nav aria-label="أقسام اللوحة">{navigation.filter(item => isAdmin || item.id !== "marketers").map(({ id, text, icon: Icon }) => <button key={id} className={tab === id ? "active" : ""} onClick={() => go(id)} aria-current={tab === id ? "page" : undefined}><Icon size={19}/>{text}{tab === id && <ChevronLeft size={15} className="chevron"/>}</button>)}</nav><div className="sidebar-bottom"><button className="policy-short" onClick={() => go("policy")}><CircleHelp size={17}/> كيف تُصرف العمولة؟</button><form onSubmit={e => save(e, { action: "logout" })}><button disabled={busy}><LogOut size={18}/> تسجيل الخروج</button></form></div></aside>
-    <main className="main"><header className="topbar"><div className="breadcrumb"><button className="mobile-menu icon" onClick={() => setExpanded(!expanded)} aria-label="القائمة" aria-expanded={expanded}><Menu size={22}/></button><span>برنامج الشركاء</span><ChevronLeft size={14}/><b>{page.text}</b></div><div className="profile"><div>{isAdmin ? "ر" : data.member.name.slice(0,1)}</div><span><b>{isAdmin ? "ستوديو ربى" : data.member.name}</b><small>{isAdmin ? "الإدارة" : "مسوّق"}</small></span></div></header>
+    <main className="main"><header className="topbar"><div className="breadcrumb"><button className="mobile-menu icon" onClick={() => setExpanded(!expanded)} aria-label="القائمة" aria-expanded={expanded}><Menu size={22}/></button><span>برنامج الشركاء</span><ChevronLeft size={14}/><b>{page.text}</b></div><div className="profile"><div className={isAdmin ? "brand-avatar" : undefined}>{isAdmin ? <img className="brand-logo" src="/ruba-logo.png" alt=""/> : data.member.name.slice(0,1)}</div><span><b>{isAdmin ? "ستوديو ربى" : data.member.name}</b><small>{isAdmin ? "الإدارة" : "مسوّق"}</small></span></div></header>
     <div className="content"><div className="title"><div><h1>{page.text}</h1><p>{tab === "overview" ? (isAdmin ? "تابعي إحالات المسوّقين والعمولات المستحقة." : "تابع إحالاتك ورصيد عمولتك من مكان واحد.") : { marketers: "إدارة الأكواد ونسب العمولة وحسابات المسوّقين.", referrals: "متابعة الطلبات الواردة ومبالغها المعتمدة.", payouts: "متابعة الأرصدة وسجل الحوالات.", settings: isAdmin ? "ضبط وجهة الروابط وجدول الصرف." : "حدّث بيانات استلام عمولتك.", policy: "تتبّع الإحالة واحتساب العمولة ومواعيد التحويل." }[tab]}</p></div>
       {isAdmin && (tab === "overview" || tab === "referrals" || tab === "marketers") && <button className="primary" onClick={() => setModal({ type: tab === "marketers" ? "marketer" : "referral" })}><Plus size={19}/>{tab === "marketers" ? "إضافة مسوّق" : "إضافة إحالة"}</button>}</div>{!modal && feedback}
     {tab === "overview" && <>{cycle}<div className="stats">
-      <Card label={isAdmin ? "إجمالي الإحالات" : "العملاء من طرفك"} value={isAdmin ? data.referrals.length : data.total} icon={Users}/>
-      <Card label="الرصيد المعتمد" value={money(balance)} note="عمولات ما زالت في الرصيد" icon={Wallet}/>
-      <Card label={isAdmin ? "المستحق في دورة الصرف" : "إجمالي العمولة المصروفة"} value={money(isAdmin ? marketers.reduce((sum, row) => sum + (due(row.id) >= minimum ? due(row.id) : 0), 0) : settled)} icon={CreditCard}/>
+      <Card label={isAdmin ? "إجمالي الإحالات" : "العملاء من طرفك"} value={isAdmin ? data.referrals.length : data.total} icon={Users} onClick={() => go("referrals")}/>
+      <Card label="الرصيد المعتمد" value={money(balance)} note="عمولات ما زالت في الرصيد" icon={Wallet} onClick={() => go("payouts")}/>
+      <Card label={isAdmin ? "المستحق في دورة الصرف" : "إجمالي العمولة المصروفة"} value={money(isAdmin ? marketers.reduce((sum, row) => sum + (due(row.id) >= minimum ? due(row.id) : 0), 0) : settled)} icon={CreditCard} onClick={() => go("payouts")}/>
     </div>
     {!isAdmin && <section className="panel share"><div className="stat-icon"><Link2 size={20}/></div><div><h2>رابطك الخاص</h2><p>كود الإحالة <bdi>{data.member.code}</bdi> · العمولة {data.member.rate / 100}٪</p></div><button className="secondary" disabled={!data.linkReady || !data.member.active} onClick={() => copy(data.member.code)}><Copy size={16}/> نسخ الرابط</button></section>}
     {isAdmin && (!data.whatsapp || !marketers.length) && <section className="panel share"><div className="stat-icon"><Settings size={20}/></div><div><h2>{!data.whatsapp ? "فعّلي روابط واتساب" : "أضيفي أول مسوّق"}</h2><p>{!data.whatsapp ? "أضيفي رقم واتساب الستوديو لتجهيز وجهة الروابط." : "حددي الكود وكلمة المرور ونسبة العمولة."}</p></div><button className="secondary" onClick={() => !data.whatsapp ? go("settings") : setModal({ type: "marketer" })}>{!data.whatsapp ? "الإعدادات" : "إضافة مسوّق"}<ArrowUpLeft size={16}/></button></section>}
     <section className="panel"><div className="panel-head"><h2>آخر الإحالات</h2><button className="text-btn" onClick={() => go("referrals")}>كل الإحالات <ChevronLeft size={15}/></button></div>{referralTable(data.referrals.slice(0,5))}</section></>}
-    {tab === "marketers" && isAdmin && <section className="panel"><div className="panel-head"><h2>حسابات المسوّقين</h2></div>{!marketers.length ? <Empty title="ما أضفتِ مسوّقين بعد" text="أضيفي الاسم والكود وكلمة المرور ونسبة العمولة المتفق عليها."/> : <div className="table-wrap"><table><thead><tr><th>اسم المسوّق</th><th>الكود</th><th>النسبة</th><th>الإحالات</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>{marketers.map(row => <tr key={row.id}><td><b>{row.name}</b></td><td><bdi>{row.code}</bdi></td><td>{row.rate / 100}٪</td><td>{data.referrals.filter(ref => ref.marketer === row.id).length}</td><td>{row.archived_at ? "في الأرشيف" : row.active ? "نشط" : "الرابط موقوف"}</td><td><div className="actions">{row.archived_at ? <button className="text-btn" onClick={() => setModal({ type: "restore-marketer", row })}>استرجاع</button> : <><button className="text-btn" onClick={() => setModal({ type: "marketer", row })}>تعديل</button><button className="text-btn" onClick={() => setModal({ type: "archive-marketer", row })}>حذف</button></>}<button className="icon" disabled={!data.whatsapp || !row.active || !!row.archived_at} onClick={() => copy(row.code)} aria-label={"نسخ رابط " + row.name}><Copy size={17}/></button></div></td></tr>)}</tbody></table></div>}</section>}
+    {tab === "marketers" && isAdmin && <section className="panel"><div className="panel-head"><h2>حسابات المسوّقين</h2></div><div className="marketer-search">
+      <label>بحث<input type="search" placeholder="الاسم أو الكود" value={marketerQuery} onChange={e => setMarketerQuery(e.target.value)}/></label>
+      <label>حالة الحساب<select value={marketerStatus} onChange={e => setMarketerStatus(e.target.value)}><option value="">جميع الحالات</option><option value="active">نشط</option><option value="paused">موقوف</option><option value="archived">في الأرشيف</option></select></label>
+    </div>{!visibleMarketers.length ? <Empty title={query || marketerStatus ? "ما فيه نتائج" : "ما أضفتِ مسوّقين بعد"} text={query || marketerStatus ? "جرّبي تغيير البحث أو حالة الحساب." : "أضيفي الاسم والكود وكلمة المرور ونسبة العمولة المتفق عليها."}/> : <div className="table-wrap"><table><thead><tr><th>اسم المسوّق</th><th>الكود</th><th>النسبة</th><th>الإحالات</th><th>الحالة</th><th>الإجراءات</th></tr></thead><tbody>{visibleMarketers.map(row => <tr key={row.id}><td><b>{row.name}</b></td><td><bdi>{row.code}</bdi></td><td>{row.rate / 100}٪</td><td>{data.referrals.filter(ref => ref.marketer === row.id).length}</td><td>{row.archived_at ? "في الأرشيف" : row.active ? "نشط" : "الرابط موقوف"}</td><td><div className="actions">{row.archived_at ? <button className="text-btn" onClick={() => setModal({ type: "restore-marketer", row })}>استرجاع</button> : <><button className="text-btn" onClick={() => setModal({ type: "marketer", row })}>تعديل</button><button className="text-btn" onClick={() => setModal({ type: "archive-marketer", row })}>حذف</button></>}<button className="icon" disabled={!data.whatsapp || !row.active || !!row.archived_at} onClick={() => copy(row.code)} aria-label={"نسخ رابط " + row.name}><Copy size={17}/></button></div></td></tr>)}</tbody></table></div>}</section>}
     {tab === "referrals" && <><section className="panel"><div className="panel-head"><h2>سجل الإحالات</h2></div>{referralTable(data.referrals)}</section>{isAdmin && data.history.length > 0 && <section className="panel"><div className="panel-head"><h2>سجل اعتماد العمولات</h2></div><div className="table-wrap"><table><thead><tr><th>الخدمة</th><th>التاريخ</th><th>الحالة</th><th>المستلم</th><th>العمولة</th></tr></thead><tbody>{data.history.map(row => <tr key={row.id}><td>{data.referrals.find(ref => ref.id === row.referral)?.project}</td><td>{displayDate(row.date)}</td><td><Badge state={row.state}/></td><td>{money(row.paid)}</td><td>{money(row.commission)}</td></tr>)}</tbody></table></div></section>}</>}
     {tab === "payouts" && <>{cycle}
       {isAdmin && <section className="panel"><div className="panel-head"><h2>أرصدة المسوّقين</h2></div>{!marketers.length ? <Empty title="لا توجد أرصدة" text="تظهر أرصدة المسوّقين وبيانات التحويل هنا."/> : <div className="table-wrap"><table><thead><tr><th>المسوّق</th><th>الرصيد المعتمد</th><th>المتاح للصرف</th><th>الوسيلة والمستفيد</th><th>بيانات التحويل</th><th>الإجراء</th></tr></thead><tbody>{marketers.map(row => { const eligible = due(row.id); return <tr key={row.id}><td><b>{row.name}</b></td><td>{money(unpaid.filter(ref => ref.marketer === row.id).reduce((sum, ref) => sum + ref.open, 0))}</td><td>{money(eligible >= minimum ? eligible : 0)}</td><td>{row.method ? methods[row.method] : "لم تُضف"}{row.beneficiary && <small>{row.beneficiary}</small>}</td><td><bdi>{row.account || "—"}</bdi></td><td><button className="secondary" disabled={eligible < minimum || !row.account} onClick={() => setModal({ type: "payout", row, amount: eligible })}>توثيق التحويل</button></td></tr>; })}</tbody></table></div>}</section>}

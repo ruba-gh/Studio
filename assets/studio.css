@@ -54,7 +54,7 @@ input:not([type="checkbox"]), select { width: 100%; min-height: 40px; border: 1p
 .login-art i { position: absolute; width: 150px; aspect-ratio: 1; border: 1px solid #d8bff14d; border-radius: 50%; }
 .login-art i:nth-child(2) { width: 225px; }
 .login-art i:nth-child(3) { width: 310px; }
-.login-art span { font-size: 5.4rem; line-height: 1; }
+.login-art .hero-logo { width: min(55%, 225px); height: auto; position: relative; }
 .layout { min-height: 100dvh; display: grid; grid-template-columns: 215px minmax(0, 1fr); grid-template-rows: 64px 1fr; }
 .topbar { grid-area: 1 / 2; display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 0 30px; background: var(--surface); border-bottom: 1px solid var(--line); }
 .topbar > span:first-of-type { color: var(--muted); font-size: .9rem; }
@@ -119,4 +119,17 @@ dialog::backdrop { background: #1b122a7a; }
   .card span { font-size: .77rem; }
   .search-bar { grid-template-columns: 1fr; }
   .topbar > span:first-of-type { display: none; }
+}
+
+
+.brand-logo { display: block; width: 78%; height: auto; }
+.brand-avatar { background: var(--accent); }
+.card-link { width: 100%; text-align: start; color: var(--ink); transition: background-color .15s, border-color .15s; }
+.card-link:hover { background: var(--tint); border-color: #d9c5ef; }
+.card-link > span { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+.card-link small { font-size: 1rem; color: var(--accent); }
+.filter-count { margin: 0 16px 8px; font-size: .84rem; color: var(--muted); }
+.filter-count:empty { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .card-link { transition: none; }
 }

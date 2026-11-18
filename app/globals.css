@@ -33,3 +33,15 @@ button,input,select{font:inherit}button{cursor:pointer}button:disabled{cursor:de
 .password-field .icon{position:absolute;right:4px;top:4px;width:34px;height:34px}
 .sidebar-bottom form button{width:100%}
 @media(max-width:620px){.login-shell{display:block;max-width:440px}.login-side{min-height:0;padding:26px 22px}.login-side>.brand{margin-bottom:24px}.login-shell .welcome-art{display:none}}
+
+
+.mark{place-content:stretch;place-items:center}
+.mark .brand-logo,.profile .brand-logo{width:78%;height:auto;display:block}
+.profile .brand-avatar{background:var(--accent)}
+.welcome-art .hero-logo{width:min(55%,225px);height:auto;position:relative}
+.stat-link{width:100%;text-align:start;color:var(--ink);transition:background-color .15s,border-color .15s}
+.stat-link:hover{background:var(--lilac);border-color:#d9c5ef}
+.stat-label{display:block;margin-top:8px;color:var(--muted);font-size:12px}
+.marketer-search{display:grid;grid-template-columns:minmax(160px,350px) minmax(125px,210px);gap:12px;padding:12px 15px}
+@media(max-width:540px){.marketer-search{grid-template-columns:1fr}.stat-label{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.stat-link{transition:none}}

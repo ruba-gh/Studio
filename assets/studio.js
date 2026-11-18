@@ -20,6 +20,7 @@ let section = "overview";
 let inFlight = false;
 let lastModalTrigger;
 let filter = { query: "", state: "" };
+let marketerFilter = { query: "", state: "" };
 
 function safe(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
@@ -79,13 +80,13 @@ function referralsTable(rows, searched = false) {
 
 function overview() {
   const cards = [
-    [isAdmin() ? "إجمالي الإحالات" : "عملاء من طرفك", currency.format(isAdmin() ? data.referrals.length : data.total)],
-    ["الرصيد المعتمد", money(sum(data.referrals, "open"))],
+    [isAdmin() ? "إجمالي الإحالات" : "عملاء من طرفك", currency.format(isAdmin() ? data.referrals.length : data.total), "referrals"],
+    ["الرصيد المعتمد", money(sum(data.referrals, "open")), "payouts"],
     [isAdmin() ? "المتاح للصرف" : "العمولات المصروفة", money(isAdmin()
       ? marketers().map(({ id }) => eligible(id)).filter((value) => value >= minimum).reduce((total, value) => total + value, 0)
-      : sum(data.payouts, "amount"))],
+      : sum(data.payouts, "amount")), "payouts"],
   ];
-  const cardView = cards.map(([label, value]) => `<article class="card"><span>${label}</span><strong>${value}</strong></article>`).join("");
+  const cardView = cards.map(([label, value, destination]) => `<button class="card card-link" type="button" data-nav="${destination}"><span>${label}<small aria-hidden="true">↗</small></span><strong>${value}</strong></button>`).join("");
   let link = "";
   if (!isAdmin()) {
     link = `<section class="panel panel-body split-bar"><div><h2>رابط الإحالة</h2><p class="muted">${markup(data.member.code)} · عمولة ${currency.format(data.member.rate / 100)}٪</p></div>${action("نسخ الرابط", "copy", { id: data.member.id, variant: "secondary", disabled: !data.linkReady })}</section>`;
@@ -96,20 +97,38 @@ function overview() {
 }
 
 function marketerPage() {
-  const current = marketers().filter((row) => !row.archived_at);
-  const archived = marketers().filter((row) => row.archived_at);
+  return panel("حسابات المسوّقين", `<div class="panel-body search-bar">
+    <label>بحث<input id="search-marketers" type="search" value="${safe(marketerFilter.query)}" placeholder="الاسم أو الكود"></label>
+    ${choose("حالة الحساب", "marketer-state", { "": "جميع الحالات", active: "نشط", paused: "موقوف", archived: "في الأرشيف" }, marketerFilter.state, false)}
+  </div><p id="marketer-count" class="filter-count" role="status"></p><div id="marketer-results"></div>`);
+}
+
+function filterMarketers() {
+  const query = marketerFilter.query.trim().toLocaleLowerCase("ar");
+  const matches = marketers().filter((row) => {
+    const state = row.archived_at ? "archived" : row.active ? "active" : "paused";
+    return (!marketerFilter.state || state === marketerFilter.state)
+      && (!query || [row.name, row.code].some((part) => String(part).toLocaleLowerCase("ar").includes(query)));
+  });
+  const current = matches.filter((row) => !row.archived_at);
+  const archived = matches.filter((row) => row.archived_at);
   const main = table(["الاسم", "الكود", "العمولة", "الإحالات", "الحالة", "الإجراءات"], current.map((row) => [
     safe(row.name), markup(row.code), currency.format(row.rate / 100) + "٪",
     currency.format(data.referrals.filter((referral) => referral.marketer === row.id).length),
     row.active ? "نشط" : "موقوف",
     `<div class="cell-actions">${action("تعديل", "edit-marketer", { id: row.id })}${action("نسخ الرابط", "copy", { id: row.id, disabled: !data.whatsapp || !row.active })}${action("حذف", "archive-marketer", { id: row.id, variant: "danger" })}</div>`,
   ]), empty("ما فيه حسابات في القائمة", "أضيفي مسوّقة جديدة أو استرجعي حسابًا من الأرشيف."));
-  if (!archived.length) return panel("حسابات المسوّقين", main);
+  select("#marketer-count").textContent = matches.length ? `النتائج: ${currency.format(matches.length)}` : "";
+  const results = select("#marketer-results");
+  if (!matches.length && (query || marketerFilter.state)) {
+    results.innerHTML = empty("ما فيه نتائج", "جرّبي تغيير البحث أو حالة الحساب.");
+    return;
+  }
   const archive = table(["الاسم", "الكود", "تاريخ الحذف", "الإجراء"], archived.map((row) => [
     safe(row.name), markup(row.code), date(row.archived_at),
     action("استرجاع", "restore-marketer", { id: row.id }),
   ]));
-  return panel("حسابات المسوّقين", main) + panel("الأرشيف", archive);
+  results.innerHTML = (current.length || !archived.length ? main : "") + (archived.length ? `<div class="panel-heading"><h2>الأرشيف</h2></div>${archive}` : "");
 }
 
 function referralsPage() {
@@ -188,7 +207,7 @@ function showPage() {
   nav.innerHTML = canUse.map((key) => `<button class="button subtle nav-button" type="button" data-nav="${key}" ${section === key ? 'aria-current="page"' : ""}>${labels[key][0]}</button>`).join("");
   select("#breadcrumb").textContent = isAdmin() ? "لوحة الإدارة" : "لوحة المسوّق";
   const profile = isAdmin() ? "ستوديو ربى" : data.member.name;
-  select("#profile").innerHTML = `<span class="avatar" aria-hidden="true">${safe(isAdmin() ? "ر" : profile[0])}</span><span><b>${safe(profile)}</b><small>${isAdmin() ? "الإدارة" : "مسوّق"}</small></span>`;
+  select("#profile").innerHTML = `<span class="avatar${isAdmin() ? " brand-avatar" : ""}" aria-hidden="true">${isAdmin() ? '<img class="brand-logo" src="./assets/ruba-logo.png" alt="">' : safe(profile[0])}</span><span><b>${safe(profile)}</b><small>${isAdmin() ? "الإدارة" : "مسوّق"}</small></span>`;
   select("#page-title").textContent = labels[section][0];
   select("#page-summary").textContent = labels[section][1];
   const add = select("#page-action");
@@ -197,6 +216,7 @@ function showPage() {
   add.textContent = section === "marketers" ? "إضافة مسوّق" : "إضافة إحالة";
   select("#page").innerHTML = pages[section]();
   if (section === "referrals") filterReferrals();
+  if (section === "marketers") filterMarketers();
 }
 
 function go(next) {
@@ -214,6 +234,7 @@ function showLogin(message = "") {
   clearSession();
   section = "overview";
   filter = { query: "", state: "" };
+  marketerFilter = { query: "", state: "" };
   if (modal.open) modal.close();
   select("#modal-content").replaceChildren();
   select("#page").replaceChildren();
@@ -339,11 +360,20 @@ select("#sign-out").addEventListener("click", async () => {
   }
 });
 document.addEventListener("input", (event) => {
-  if (event.target.id !== "search-referrals") return;
-  filter.query = event.target.value;
-  filterReferrals();
+  if (event.target.id === "search-referrals") {
+    filter.query = event.target.value;
+    filterReferrals();
+  }
+  if (event.target.id === "search-marketers") {
+    marketerFilter.query = event.target.value;
+    filterMarketers();
+  }
 });
 document.addEventListener("change", (event) => {
+  if (event.target.name === "marketer-state") {
+    marketerFilter.state = event.target.value;
+    filterMarketers();
+  }
   if (event.target.name === "referral-state") {
     filter.state = event.target.value;
     filterReferrals();
@@ -363,7 +393,9 @@ document.addEventListener("submit", async (event) => {
   const feedbackBox = command === "login" ? "#login-error" : modal.open ? "#modal-error" : "#dashboard-feedback";
   feedback(feedbackBox, "");
   const submit = element.querySelector("[type=submit]");
+  const buttonText = submit.textContent;
   submit.disabled = true;
+  submit.textContent = command === "login" ? "جارٍ الدخول…" : "جارٍ الحفظ…";
   inFlight = true;
   try {
     await api({ ...Object.fromEntries(new FormData(element)), action: command });
@@ -375,5 +407,6 @@ document.addEventListener("submit", async (event) => {
   } finally {
     inFlight = false;
     submit.disabled = false;
+    submit.textContent = buttonText;
   }
 });
