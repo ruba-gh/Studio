@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { canAttempt, checkPassword, createSession, endSession, matches, passwordHash, principalFor } from "../../../lib/studio-auth";
+import { canAttempt, checkPassword, createSession, dashboardOrigin, dashboardRequest, endSession, matches, passwordHash, principalFor } from "../../../lib/studio-auth";
 import { fortnight, methods, minimum, riyadhDate, schedule } from "../../../lib/studio";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +11,34 @@ function reply(value: object, status = 200, cookie?: string) {
   if (cookie) headers.set("Set-Cookie", cookie);
   return Response.json(value, { status, headers });
 }
+async function signedIn(principal: string, request: Request) {
+  const session = await createSession(principal, request);
+  return reply({ success: true, ...(session.token ? { token: session.token } : {}) }, 200, session.cookie);
+}
+
+function cors(response: Response, request: Request) {
+  response.headers.append("Vary", "Origin");
+  if (dashboardRequest(request)) response.headers.set("Access-Control-Allow-Origin", dashboardOrigin);
+  return response;
+}
+
+export function OPTIONS(request: Request) {
+  if (!dashboardRequest(request)) return cors(new Response(null, { status: 403 }), request);
+  return cors(new Response(null, { status: 204, headers: {
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Max-Age": "600",
+  } }), request);
+}
+
+export async function GET(request: Request) {
+  return cors(await readDashboard(request), request);
+}
+
+export async function POST(request: Request) {
+  return cors(await updateDashboard(request), request);
+}
+
 class InputError extends Error {}
 function validate(ok: unknown, message: string): asserts ok {
   if (!ok) throw new InputError(message);
@@ -39,7 +67,7 @@ async function access(request: Request) {
     : null;
   return { db, settings, admin, member };
 }
-export async function GET(request: Request) {
+async function readDashboard(request: Request) {
   const { db, settings, admin, member } = await access(request);
   if (!settings) return reply({ role: env.STUDIO_SETUP_KEY ? "setup" : "unavailable" });
   if (!admin && !member) return reply({ role: "guest" });
@@ -62,8 +90,8 @@ export async function GET(request: Request) {
   return reply({ role: "marketer", member, timing, linkReady: !!settings.whatsapp, referrals: referrals.results, payouts: payouts.results, total });
 }
 
-export async function POST(request: Request) {
-  if (request.headers.get("Sec-Fetch-Site") === "cross-site" || !request.headers.get("Content-Type")?.startsWith("application/json")) {
+async function updateDashboard(request: Request) {
+  if ((request.headers.get("Sec-Fetch-Site") === "cross-site" && !dashboardRequest(request)) || !request.headers.get("Content-Type")?.startsWith("application/json")) {
     return reply({ error: "طلب غير صالح" }, 403);
   }
   const { db, settings, admin, member } = await access(request);
@@ -77,13 +105,14 @@ export async function POST(request: Request) {
     if (data.action === "login" || data.action === "setup") {
       if (!await canAttempt(request, data.action)) return reply({ error: "وصلت للحد الأقصى للمحاولات. جرّب بعد قليل." }, 429);
       if (data.action === "setup") {
+        validate(!dashboardRequest(request), "يتم تفعيل حساب الإدارة من رابط الموقع الأساسي.");
         const secret = env.STUDIO_SETUP_KEY;
         validate(!settings && secret && typeof data.key === "string" && matches(data.key, secret), "رمز التهيئة غير صحيح أو تم تفعيل الحساب مسبقًا");
         const password = passwordInput(data.password);
         const firstDate = new Date(Date.parse(today + "T00:00:00Z") + fortnight).toISOString().slice(0, 10);
         const result = await db.prepare("INSERT OR IGNORE INTO settings (id,admin,anchor) VALUES (1,?,?)").bind(await passwordHash(password), firstDate).run();
         validate(result.meta.changes === 1, "تم تفعيل حساب الإدارة مسبقًا. سجّلي الدخول.");
-        return reply({ success: true }, 200, await createSession("admin"));
+        return await signedIn("admin", request);
       }
       const username = required(data.username, "اسم الدخول", 40).normalize("NFKC").toUpperCase();
       const password = required(data.password, "كلمة المرور", 128);
@@ -92,7 +121,7 @@ export async function POST(request: Request) {
       if (!await checkPassword(typeof data.password === "string" ? data.password : password, isAdmin ? settings?.admin : account?.password)) {
         return reply({ error: "اسم الدخول أو كلمة المرور غير صحيحة" }, 401);
       }
-      return reply({ success: true }, 200, await createSession(isAdmin ? "admin" : account!.id));
+      return await signedIn(isAdmin ? "admin" : account!.id, request);
     }
     if (data.action === "password" && (admin || member)) {
       const hash = admin ? settings?.admin : await db.prepare("SELECT password FROM marketers WHERE id=?").bind(member!.id).first<string>("password");
@@ -103,7 +132,7 @@ export async function POST(request: Request) {
         admin ? db.prepare("UPDATE settings SET admin=? WHERE id=1").bind(next) : db.prepare("UPDATE marketers SET password=? WHERE id=?").bind(next, principal),
         db.prepare("DELETE FROM sessions WHERE principal=?").bind(principal),
       ]);
-      return reply({ success: true }, 200, await createSession(principal));
+      return await signedIn(principal, request);
     }
     if (data.action === "details" && member) {
       const method = required(data.method, "وسيلة التحويل");

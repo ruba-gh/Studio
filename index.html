@@ -1,10 +1,59 @@
 <!doctype html>
 <html lang="ar" dir="rtl">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="0;url=https://studio-ruba-partners.greykrill1024.chatgpt.site/">
-<title>دخول شركاء ستوديو ربى</title>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src https://studio-ruba-partners.greykrill1024.chatgpt.site; base-uri 'none'; object-src 'none'; form-action 'none'">
+  <title>شركاء ستوديو ربى</title>
+  <link rel="stylesheet" href="./assets/studio.css">
+  <script src="./assets/studio.js" type="module"></script>
 </head>
-<body><p><a href="https://studio-ruba-partners.greykrill1024.chatgpt.site/">فتح صفحة الدخول إلى ستوديو ربى</a></p></body>
+<body>
+  <main id="login" class="login-wrap">
+    <div class="login-card">
+      <section class="login-form">
+        <div class="brand"><span class="monogram" aria-hidden="true">ر</span><span><b>ستوديو ربى</b><small>برنامج الشركاء</small></span></div>
+        <h1>تسجيل الدخول</h1>
+        <p>ادخلي إلى لوحة الشركاء.</p>
+        <form id="sign-in">
+          <label>اسم الدخول<input name="username" autocomplete="username" maxlength="40" dir="auto" required></label>
+          <label>كلمة المرور<span class="password-box"><input name="password" type="password" dir="ltr" autocomplete="current-password" maxlength="128" required><button type="button" data-show aria-label="إظهار كلمة المرور">إظهار</button></span></label>
+          <p id="login-error" class="feedback error" role="alert" hidden></p>
+          <button class="button primary" type="submit">دخول</button>
+        </form>
+        <noscript>يتطلب تسجيل الدخول تشغيل JavaScript.</noscript>
+      </section>
+      <div class="login-art" aria-hidden="true"><i></i><i></i><i></i><span>ر</span></div>
+    </div>
+  </main>
+
+  <div id="dashboard" class="layout" hidden>
+    <header class="topbar">
+      <button id="menu" class="button subtle mobile" type="button" aria-controls="sidebar" aria-expanded="false">القائمة</button>
+      <span id="breadcrumb">لوحة الشركاء</span>
+      <span id="profile" class="profile"></span>
+    </header>
+    <aside id="sidebar" class="sidebar">
+      <div class="brand"><span class="monogram" aria-hidden="true">ر</span><span><b>ستوديو ربى</b><small>برنامج الشركاء</small></span></div>
+      <nav id="nav" aria-label="أقسام لوحة الشركاء"></nav>
+      <button id="sign-out" class="button subtle logout" type="button">تسجيل الخروج</button>
+    </aside>
+    <main id="workspace" class="workspace">
+      <header class="page-header">
+        <div><h1 id="page-title"></h1><p id="page-summary"></p></div>
+        <button id="page-action" class="button primary" type="button" hidden></button>
+      </header>
+      <p id="dashboard-feedback" class="feedback" role="status" hidden></p>
+      <div id="page"></div>
+    </main>
+  </div>
+  <dialog id="modal" aria-labelledby="modal-title">
+    <header class="panel-heading"><h2 id="modal-title"></h2><button class="button subtle" type="button" data-close>إغلاق</button></header>
+    <div class="modal-body">
+      <p id="modal-error" class="feedback error" role="alert" hidden></p>
+      <div id="modal-content"></div>
+    </div>
+  </dialog>
+</body>
 </html>

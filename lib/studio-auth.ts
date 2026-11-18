@@ -4,6 +4,12 @@ import { scrypt } from "node:crypto";
 const encoder = new TextEncoder();
 const cookieName = "__Host-studio_session";
 const lifetime = 7 * 24 * 60 * 60;
+export const dashboardOrigin = "https://ruba-gh.github.io";
+const browserSessionLifetime = 8 * 60 * 60;
+
+export function dashboardRequest(request: Request) {
+  return request.headers.get("Origin") === dashboardOrigin;
+}
 const scryptCost = { N: 32768, r: 8, p: 3, maxmem: 64 * 1024 * 1024 };
 
 function hex(bytes: Uint8Array) {
@@ -51,6 +57,9 @@ function sessionCookie(token: string, age: number) {
 }
 
 function getToken(request: Request) {
+  if (dashboardRequest(request)) {
+    return request.headers.get("Authorization")?.match(/^Bearer ([a-f0-9]{64})$/)?.[1];
+  }
   return request.headers.get("Cookie")?.match(/(?:^|;\s*)__Host-studio_session=([a-f0-9]{64})(?:;|$)/)?.[1];
 }
 
@@ -61,15 +70,17 @@ export async function principalFor(request: Request) {
     .bind(await digest(token), Math.floor(Date.now() / 1000)).first<string>("principal");
 }
 
-export async function createSession(principal: string) {
+export async function createSession(principal: string, request: Request) {
+  const dashboard = dashboardRequest(request);
+  const age = dashboard ? browserSessionLifetime : lifetime;
   const token = randomHex(32);
   const now = Math.floor(Date.now() / 1000);
   const db = env.DB!;
   await db.batch([
     db.prepare("DELETE FROM sessions WHERE expires<=?").bind(now),
-    db.prepare("INSERT INTO sessions (token,principal,expires) VALUES (?,?,?)").bind(await digest(token), principal, now + lifetime),
+    db.prepare("INSERT INTO sessions (token,principal,expires) VALUES (?,?,?)").bind(await digest(token), principal, now + age),
   ]);
-  return sessionCookie(token, lifetime);
+  return dashboard ? { token } : { cookie: sessionCookie(token, age) };
 }
 
 export async function endSession(request: Request) {

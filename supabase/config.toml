@@ -1,0 +1,4 @@
+project_id = "studio-ruba"
+
+[functions.studio]
+verify_jwt = false
